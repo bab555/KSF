@@ -1,0 +1,10 @@
+The capital of France is Paris.
+The main component of water is H2O.
+The sun rises in the east and sets in the west.
+Python is a popular programming language known for its readability.
+The Knowledge Synthesized Framework (KSF) aims to integrate a reasoning synthesizer with a parametric knowledge bank.
+Large language models are trained on vast amounts of text data.
+Cross-attention is a mechanism used in transformers to integrate information from different sources.
+The Qwen3 series of models represents a significant advancement in open-source AI.
+Semantic search allows finding information based on meaning rather than just keywords.
+A knowledge base can be either static or dynamically updated. 

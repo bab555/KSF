@@ -1,0 +1,87 @@
+# KSF V2 Training Configuration
+# This file centralizes all parameters for the KSF V2 model training,
+# covering model architecture, data paths, training settings, and logging.
+
+# --- Base Model Configuration ---
+# Defines the core transformer model used as the foundation for KSF.
+base_model:
+  path: "../qwen3" # Local path to Qwen3 model
+  hidden_size: 2560             # Core dimension of the transformer model (e.g., Qwen3-4B)
+  vocab_size: 151669             # Vocabulary size, specific to the tokenizer (corrected from 151851)
+  torch_dtype: "bfloat16"       # Data type for training (bfloat16 is recommended for modern GPUs)
+
+# --- Model-Specific Configurations ---
+# Contains parameters for the custom modules within the KSF architecture.
+model:
+  # Specific parameters for the SynthesizerConductor module (S-Module)
+  synthesizer_conductor:
+    # Inherits hidden_size, vocab_size from the base model config
+    num_experts: 4
+    top_k_experts: 2
+    # Configuration for the optional input bottleneck simulator
+    input_bottleneck_dim: null # e.g., 768 to simulate a smaller input embedding space
+    synthesizer_heads: 8 # Number of attention heads in the guidance fusion mechanism
+    # Configuration for the Summarizer Head
+    summarizer_head:
+      # Currently, the summarizer head uses the main model's intermediate_size,
+      # but specific layer configs could be added here in the future.
+      enabled: true
+
+  # Specific parameters for the KnowledgeBank module (K-Module)
+  knowledge_bank:
+    # Inherits hidden_size from the base model config
+    memory_matrix_size: 16384 # Number of knowledge vectors in the bank
+    # Configuration for the knowledge injection mechanism
+    knowledge_injection:
+      embedding_model_id: "../qwen3-embedding/Qwen/Qwen3-Embedding-4B" # Local path to Qwen3-Embedding model
+      embedding_dimension: 2560 # Dimension of the pre-trained embedding model
+      requires_adapter: false # No adapter needed as dimensions match base model hidden_size
+
+# --- Data Configuration ---
+# Paths and parameters related to the training and evaluation datasets.
+data:
+  knowledge_path: "data/knowledge_base.txt" # Path to the external knowledge file for injection
+  train_path: "data/staged_training_test/train/ksf_train.jsonl"
+  eval_path: "data/staged_training_test/eval/ksf_eval.jsonl"
+  max_seq_length: 2048 # Maximum sequence length for the model input
+
+# --- Training Configuration ---
+# Parameters that control the training loop and optimization process.
+training:
+  # General training settings
+  output_dir: "checkpoints/ksf_v2"
+  num_epochs: 3
+  
+  # Optimizer settings
+  optimizer:
+    type: "AdamW"
+    betas: [0.9, 0.999]
+    eps: 1.0e-8
+  learning_rate: 5.0e-5
+  weight_decay: 0.01
+  
+  # Scheduler settings
+  lr_scheduler:
+    type: "cosine"
+    warmup_ratio: 0.03
+  
+  # Batch settings
+  batch_size: 1 # Adjust based on GPU memory
+  gradient_accumulation_steps: 4 # Effective batch size = train_batch_size * grad_accum * num_gpus
+
+# --- Loss Configuration ---
+# Configuration for the loss function
+loss:
+  main_weight: 1.0 # Weight for the primary cross-entropy task loss
+  summary_loss:
+    enabled: true # Whether to use the auxiliary summary loss
+    weight: 0.1   # The weight for the summary loss term
+
+# --- Logging Configuration ---
+# Settings for logging metrics and training progress.
+logging:
+  log_to: "wandb" # or "tensorboard", "file"
+  project_name: "KSF_V2_Training"
+  run_name: "Qwen3-4B-Base-Initial-Run"
+  log_level: "INFO"
+  log_interval: 10 
