@@ -1,6 +1,6 @@
 # Knowledge Synthesized Framework (KSF)
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.7+-red.svg)](https://pytorch.org/)
 
@@ -156,7 +156,9 @@ print(response)
 
 ## 📄 许可证
 
-本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件
+本项目采用 **CC BY-NC-SA 4.0** 许可证 - 详见 [LICENSE](LICENSE) 文件
+
+⚠️ **重要说明**: 本项目仅供**非商业用途**使用。商业使用请联系开发者获取授权。
 
 ---
 
