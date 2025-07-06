@@ -1,0 +1,30 @@
+**Guide Topic:**
+{{ topic }}
+
+**Step-by-Step Framework:**
+
+{% if action_items %}
+**Action Items:**
+{% for action in action_items %}
+**Step {{ loop.index }}:** {{ action }}
+{% endfor %}
+{% endif %}
+
+**Supporting Knowledge:**
+{% for item in direct_knowledge %}
+• {{ item.content }} (Score: {{ "%.2f"|format(item.final_score) }})
+{% endfor %}
+
+{% if hidden_associations %}
+**Additional Considerations:**
+{% for assoc in hidden_associations %}
+• {{ assoc.explanation }}
+{% endfor %}
+{% endif %}
+
+{% if risk_factors %}
+**Important Warnings:**
+{% for risk in risk_factors %}
+• {{ risk }}
+{% endfor %}
+{% endif %}

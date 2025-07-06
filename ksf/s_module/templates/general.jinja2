@@ -1,0 +1,22 @@
+**Query:**
+{{ query }}
+
+**Knowledge Base Response:**
+
+**Primary Information:**
+{% for item in direct_knowledge %}
+• {{ item.content }}
+  (Score: {{ "%.2f"|format(item.final_score) }}, Similarity: {{ "%.2f"|format(item.original_similarity) }})
+{% endfor %}
+
+{% if hidden_associations %}
+**Related Insights:**
+{% for assoc in hidden_associations %}
+• {{ assoc.explanation }}
+{% endfor %}
+{% endif %}
+
+**Confidence Mapping:**
+{% for key, weight in attention_weights.items() %}
+• {{ key }}: {{ "%.2f"|format(weight) }}
+{% endfor %}

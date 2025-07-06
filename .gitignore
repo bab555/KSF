@@ -1,10 +1,39 @@
-# Python 虚拟环境
+# Environments
 ksf_env/
-venv/
+.env
+.venv
 env/
+venv/
 ENV/
-.venv/
-.env/
+env.bak/
+venv.bak/
+
+# IDE / Editor specific
+.vscode/
+.idea/
+*.swp
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Logs
+logs/
+
+# Data and Documentation
+data/
+docs/
+
+# Models
+snowflake-arctic-embed-m/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
 
 # Python 缓存文件
 __pycache__/
@@ -12,9 +41,7 @@ __pycache__/
 *$py.class
 *.so
 .Python
-build/
 develop-eggs/
-dist/
 downloads/
 eggs/
 .eggs/
@@ -24,9 +51,7 @@ parts/
 sdist/
 var/
 wheels/
-*.egg-info/
-.installed.cfg
-*.egg
+*.installed.cfg
 MANIFEST
 
 # PyTorch 模型文件 (太大，不适合Git)
@@ -37,7 +62,6 @@ checkpoints/*/
 !checkpoints/.gitkeep
 
 # 日志文件
-logs/
 *.log
 
 # 临时文件
@@ -46,10 +70,7 @@ temp/
 tmp/
 
 # IDE 文件
-.vscode/
-.idea/
 *.swp
-*.swo
 *~
 
 # 系统文件
@@ -80,7 +101,6 @@ weights/
 htmlcov/
 
 # 环境变量
-.env
 .env.local
 .env.*.local
 

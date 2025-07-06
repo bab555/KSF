@@ -1,0 +1,43 @@
+**Analysis Subject:**
+{{ topic }}
+
+**Strategic Overview:**
+{% if strategic_points %}
+{% for point in strategic_points %}
+• {{ point }}
+{% endfor %}
+{% endif %}
+
+**Key Information:**
+{% for item in direct_knowledge %}
+• {{ item.content }}
+  - Source: {{ item.id }}
+  - Score: {{ "%.2f"|format(item.final_score) }}
+  - (Similarity: {{ "%.2f"|format(item.original_similarity) }}, PageRank: {{ "%.2f"|format(item.pagerank_weight) }})
+{% endfor %}
+
+{% if hidden_associations %}
+**Extended Context:**
+{% for assoc in hidden_associations %}
+• {{ assoc.related_concept }}: {{ assoc.explanation }}
+{% endfor %}
+{% endif %}
+
+{% if temporal_aspects %}
+**Temporal Considerations:**
+{% for period, items in temporal_aspects.items() %}
+{% if items %}
+**{{ period.replace('_', ' ').title() }}:**
+{% for item in items %}
+• {{ item }}
+{% endfor %}
+{% endif %}
+{% endfor %}
+{% endif %}
+
+{% if risk_factors %}
+**Risk Assessment:**
+{% for risk in risk_factors %}
+• {{ risk }}
+{% endfor %}
+{% endif %}

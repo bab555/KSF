@@ -1,0 +1,42 @@
+**Analysis Topic:**
+{{ topic }}
+
+**Comparison Framework:**
+{% if comparison_aspects %}
+{% for aspect, items in comparison_aspects.items() %}
+{% if items %}
+**{{ aspect.title() }} Dimension:**
+{% for item in items %}
+• {{ item }}
+{% endfor %}
+{% endif %}
+{% endfor %}
+{% endif %}
+
+**Direct Knowledge Points:**
+{% for item in direct_knowledge %}
+• {{ item.content }} (Score: {{ "%.2f"|format(item.final_score) }})
+{% endfor %}
+
+{% if hidden_associations %}
+**Related Considerations:**
+{% for assoc in hidden_associations %}
+• {{ assoc.explanation }} (Strength: {{ "%.2f"|format(assoc.strength) }})
+{% endfor %}
+{% endif %}
+
+{% if pros_cons.pros or pros_cons.cons %}
+**Pros & Cons Analysis:**
+{% if pros_cons.pros %}
+**Advantages:**
+{% for pro in pros_cons.pros %}
+• {{ pro }}
+{% endfor %}
+{% endif %}
+{% if pros_cons.cons %}
+**Disadvantages:**
+{% for con in pros_cons.cons %}
+• {{ con }}
+{% endfor %}
+{% endif %}
+{% endif %}

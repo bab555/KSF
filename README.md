@@ -1,173 +1,105 @@
-# Knowledge Synthesized Framework (KSF)
+# 知识合成框架 (Knowledge-Synthesized-Framework, KSF) v3
 
-[![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![PyTorch](https://img.shields.io/badge/PyTorch-2.7+-red.svg)](https://pytorch.org/)
+## 1. 项目简介与架构演进
 
-**KSF (Knowledge Synthesized Framework)** 是一个创新的双专家架构AI框架，通过知识注入和智能合成实现高效的语言模型增强。
+知识合成框架 (KSF) 是一套先进的模块化系统，旨在通过动态生成高度优化的、情境感知的内容，增强在特定知识领域的响应能力。
 
-## 🌟 核心特性
+### V3架构升级：从"注入"到"协作"
 
-### 🏗️ 双专家协同架构 (S→K→S)
-- **SynthesizerConductor (S-Module)**: 作为框架的中央"大脑"，负责深度理解和处理用户查询，并主动向K模块查询以获取决策支持。
-- **KnowledgeBank (K-Module)**: 一个参数化的被动记忆模块，通过可训练的`memory_matrix`存储知识，并通过交叉注意力机制响应S模块的查询。
-- **S→K→S循环流与Logits偏置注入**: 这是KSF的核心交互模式。K模块返回的**词汇偏置 (Vocab Bias)** 会在生成最终Token时，被**直接加到基座大模型的Logits之上**。这种对输出概率的直接干预，是一种高效的"结果注入"技术，它在不改变基座模型任何权重的前提下，将K模块的知识判断精确地"偏转"到最终的生成结果上，实现精准的内容引导和修正。
+KSF v3是一次彻底的架构重构，其核心是从一个单向的"注入"模型，演进为一个双向的"动态协作"模型。
 
-### 🧠 内化与外联兼备的知识能力
-- **参数化知识存储**: KSF最显著的特点之一是其K模块能将知识**学习并内化**到自身的模型参数中。这意味着即使**没有外部知识库**，KSF也能像一个自包含的专家一样，依赖其内部存储的知识进行回答。
-- **动态知识处理 (RAG增强)**: 当与外部知识库（如RAG系统）结合使用时，KSF能将其学习到的推理和整合能力，泛化到**动态检索到的新知识**上。它不仅仅是检索，更是对新知识的深度理解和有机融合，极大地强化了知识库的处理能力。
-- **知识注入机制 (Knowledge Injection)**: 框架提供了一套完整的知识注入流程。通过`scripts/inject_knowledge.py`脚本，可以使用指定的同源嵌入模型（如`Qwen3-Embedding`）将文本知识库向量化，并将其直接加载到K模块的`memory_matrix`中。这使得模型能以非训练的方式快速获取大量先验知识。
+**为何放弃V1的"偏置注入" (Bias Injection)方案？**
+旧版KSF曾探索通过"偏置注入"技术直接影响模型内部权重。然而，该方案存在根本性缺陷：
+*   **泛化性差**：与特定模型架构深度耦合，难以适应快速迭代的模型。
+*   **接口废弃**：现代高级大语言模型（LLM）出于安全、稳定和黑盒化的考虑，已普遍**不再提供或支持**此类深入内部的偏置调整接口。
 
-### ✨ 增强的S模块与流式注意力引导
-- **三阶段"思考"过程**: S模块的推理过程被设计为三个阶段：**查询处理 -> 内部总结 -> 指导融合**。通过专用的`SummarizerHead`，模型在最终输出前会进行一个"思考总结"的中间步骤，提升了回答的深度和条理性。
-- **流式注意力引导 (Flowing Attention Guidance)**: 从K模块获得的指导信息并非一次性的硬性修正，而是通过`guidance_fusion_attention`机制，像一股数据流一样**平滑地融入**S模块后续的每一个推理步骤中，持续、动态地引导和修正生成过程的轨迹。
-
-## 🔧 技术优势
-
-### 🧬 同源嵌入策略 (Homologous Embedding)
-- **解决语义鸿沟**: 为了确保S模块的"提问"和K模块的"回答"在同一个语义频道上，KSF提倡采用**同源嵌入 (Homologous Embedding)** 策略。
-- **保证高效兼容**: 这意味着应该选择与基础语言模型（S模块）属于**相同技术族系、共享语义空间**的嵌入模型来对知识进行编码。例如，当S模块使用Qwen3系列模型时，知识注入也应采用Qwen3的Embedding模型。这种方法从根源上保证了向量空间的对齐，避免了使用不同源模型时可能出现的语义偏差和需要额外适配器层的复杂性。
-
-### 🎭 灵活的角色与部署
-- **自包含专家**: 依赖内部参数化知识库，独立完成推理任务。
-- **阅读理解与泛化专家**: 结合RAG，对外部动态知识进行深度加工和理解。
-
-### ⚡ 高效训练与微调
-- **知识注入加速**: 通过直接注入，极大缩短了模型在特定领域"冷启动"的学习成本。
-- **伪API式冻结训练 (Pseudo-API Freezing)**: 在知识注入后，K模块的权重可以被"冻结"，使其成为一个固定的、仅供查询的"知识API"。S模块在训练中将专注于学习如何高效地查询这个"API"，并理解其返回的指导信息，而不是去改变知识本身。这种策略使得训练过程更稳定、目标更明确。
-- **辅助损失监督**: 专为"总结能力"设计的辅助损失函数，帮助S模块更好地学习推理和归纳。
-
-## 🚀 快速开始
-
-### 环境要求
-- Python 3.8+
-- PyTorch 2.7+
-- CUDA 支持的GPU（推荐）
-- 16GB+ GPU显存（用于Qwen3-4B模型）
-
-### 安装依赖
-```bash
-pip install -r requirements.txt
-```
-
-### 模型准备
-确保您有以下模型文件：
-- Qwen3基础模型（默认路径：`../qwen3`）
-- Qwen3-Embedding-4B模型（默认路径：`../qwen3-embedding/Qwen/Qwen3-Embedding-4B`）
-
-### 知识注入
-在训练前，先注入知识到KnowledgeBank：
-
-```bash
-# 1. 准备知识文件
-# 将您的知识内容放入 data/knowledge_base.txt
-# 每行一个知识条目
-
-# 2. 执行知识注入
-python scripts/inject_knowledge.py
-```
-
-### 训练模型
-```bash
-# 使用默认配置训练
-python train_ksf.py
-
-# 自定义配置
-python train_ksf.py --config configs/your_config.yaml
-```
-
-### 配置说明
-主要配置文件：`configs/ksf_training_config.yaml`
-
-关键配置项：
-- `knowledge_injection`: 知识注入设置
-- `base_model`: 基础模型配置
-- `training`: 训练超参数
-- `data`: 数据路径设置
-
-## 📁 项目结构
-```
-Knowledge-Synthesized-Framework/
-├── ksf/                          # 核心框架代码
-│   ├── models/                   # 模型定义
-│   │   ├── advanced_ksf_model.py      # 主模型
-│   │   ├── advanced_knowledge_expert.py  # K模块
-│   │   ├── advanced_synthesizer.py    # S模块
-│   │   └── base_expert.py         # 专家基类
-│   ├── training/                 # 训练相关
-│   │   ├── trainer.py            # 训练器
-│   │   └── losses.py             # 损失函数
-│   └── utils/                    # 工具函数
-├── configs/                      # 配置文件
-├── data/                         # 数据目录
-├── scripts/                      # 脚本
-│   └── inject_knowledge.py       # 知识注入脚本
-├── checkpoints/                  # 模型检查点
-└── logs/                         # 训练日志
-```
-
-## 🎯 使用示例
-
-### 基本推理
-```python
-from ksf.models.advanced_ksf_model import AdvancedKsfModel
-import yaml
-
-# 加载配置
-with open('configs/ksf_training_config.yaml', 'r') as f:
-    config = yaml.safe_load(f)
-
-# 初始化模型（自动加载注入的知识）
-model = AdvancedKsfModel(config)
-
-# 推理
-query = "什么是机器学习？"
-response = model.generate(query)
-print(response)
-```
-
-### 知识注入流程
-```python
-# 知识注入已集成到训练流程中
-# 1. 准备知识文件 data/knowledge_base.txt
-# 2. 运行 python scripts/inject_knowledge.py
-# 3. 训练时模型会自动加载注入的知识
-```
-
-## 📊 当前状态
-
-✅ **已完成**:
-- 双专家架构实现
-- 知识注入系统
-- 训练管道搭建
-- 核心功能验证
-
-🔄 **进行中**:
-- 全面性能测试
-- 基准评估
-- 优化调参
-
-🎯 **计划中**:
-- 更多预训练模型支持
-- 分布式训练
-- Web API接口
-
-## 🤝 贡献
-
-欢迎提交Issue和Pull Request！
-
-## 📧 联系方式
-
-- **开发者**: 易尘/bab555
-- **邮箱**: bab55@163.com
-- **GitHub**: [ksf](https://github.com/bab555/ksf)
-
-## 📄 许可证
-
-本项目采用 **CC BY-NC-SA 4.0** 许可证 - 详见 [LICENSE](LICENSE) 文件
-
-⚠️ **重要说明**: 本项目仅供**非商业用途**使用。商业使用请联系开发者获取授权。
+因此，KSF v3转向了一个更灵活、更健壮的全新范式。
 
 ---
 
+## 2. 核心理念与技术架构
+
+### 2.1. K-S动态协作模型
+
+KSF v3的核心思想，是将复杂的知识合成任务解耦为两个独立但紧密协作的模块：
+
+*   🧠 **K-Module (知识发现器)**: 扮演**"直觉引擎"**角色。它负责基于向量相似性和图结构重要性，进行快速、发散的知识探索。
+*   🎯 **S-Module (提示装配引擎)**: 扮演**"逻辑引擎"**角色。它负责分析用户意图，对K模块的检索过程进行**"校正指导"**，最终装配出结构清晰的答案。
+
+这种 **"K-first, S-corrects"** 的动态协作，由一个中心**Orchestrator（编排器）** 指挥，使得整个系统既有广度又有深度。
+
+### 2.2. K-Module: "语义检索 + 图重排序"双阶段引擎
+
+K模块通过一套"组合拳"来确保检索到的知识既**相关**又**重要**。
+
+*   **阶段一：语义检索 (Semantic Retrieval)**
+    *   **核心模型**: 采用 `Snowflake/snowflake-arctic-embed-m` 作为基础语义模型，并加载了针对特定领域微调的**PEFT适配器**。
+    *   **实现**: 将知识点预处理为`FAISS`向量索引，进行高效的向量相似度搜索。
+
+*   **阶段二：图重排序 (Graph-based Reranking)**
+    *   **核心思想**: 评估知识在整个知识体系中的**"结构重要性"**。
+    *   **实现**: 离线构建知识图谱并运行**PageRank算法**计算全局权重，再结合语义相似分进行重排序。
+        \[
+        \text{Final Score} = \alpha \times (\text{PageRank Weight}) + (1 - \alpha) \times (\text{Original Similarity})
+        \]
+
+### 2.3. S-Module: 具备"工具箱"的智能分析核心
+
+S模块是系统的"大脑"，通过内置的"智能工具箱"来理解和组织信息。
+*   **核心功能**: 意图分析、实体识别、生成指导K模块的**"检索指令"** (`RetrievalInstruction`)，并利用`Jinja2`模板引擎进行最终答案装配。
+
+---
+
+## 3. 快速开始
+
+### 3.1. 环境要求
+- Python 3.8+
+- PyTorch 2.7+
+- CUDA 支持的GPU（推荐）
+
+### 3.2. 安装与运行
+1.  **安装依赖**:
+    ```bash
+    pip install -r requirements.txt
+    ```
+2.  **准备模型与数据**:
+    *   确保您的基础模型 (如 `snowflake-arctic-embed-m`) 已下载。
+    *   确保您的知识库文件 (如 `云和文旅知识库数据集.json`) 已放在`data/`目录下。
+3.  **检查配置**:
+    *   打开 `demo_ksf_v3.py`，检查 `config` 字典中的模型和文件路径是否正确。
+4.  **运行演示**:
+    ```bash
+    python demo_ksf_v3.py
+    ```
+
+---
+
+## 4. 项目信息
+
+### 4.1. 项目结构
+```
+Knowledge-Synthesized-Framework/
+├── ksf/                  # 核心框架代码
+│   ├── core/             # 编排器
+│   ├── k_module/         # K模块
+│   └── s_module/         # S模块
+├── configs/              # 配置文件
+├── data/                 # 数据与知识库
+├── scripts/              # 工具脚本
+├── checkpoints/          # 模型检查点与索引
+└── demo_ksf_v3.py        # 演示脚本
+```
+
+### 4.2. 贡献与联系
+- **开发者**: 易尘/bab555
+- **邮箱**: bab55@163.com
+- **GitHub**: [https://github.com/bab555/ksf](https://github.com/bab555/ksf)
+
+欢迎提交Issue和Pull Request！
+
+### 4.3. 许可证
+本项目采用 **CC BY-NC-SA 4.0** 许可证 - 详见 [LICENSE](LICENSE) 文件。
+⚠️ **重要说明**: 本项目仅供**非商业用途**使用。商业使用请联系开发者获取授权。
+
+---
 **开发团队**: 红点天枢 

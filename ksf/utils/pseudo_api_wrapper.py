@@ -78,16 +78,22 @@ class PseudoAPIWrapper(nn.Module):
     def forward_from_embeddings(self, inputs_embeds: torch.Tensor, attention_mask: torch.Tensor = None, **kwargs):
         """
         Run the model forward pass starting from embeddings.
+        This is a crucial helper for our KSF architecture.
         
         Args:
             inputs_embeds: Input embeddings [batch_size, seq_len, hidden_size]
             attention_mask: Attention mask [batch_size, seq_len]
-            **kwargs: Additional arguments
+            **kwargs: Additional arguments for the base model's forward pass
             
         Returns:
-            Model outputs with logits
+            Model outputs (raw output from the base model)
         """
-        return self.base_model(inputs_embeds=inputs_embeds, attention_mask=attention_mask, **kwargs)
+        return self.base_model(
+            inputs_embeds=inputs_embeds, 
+            attention_mask=attention_mask, 
+            return_dict=True, # Ensure we always get a structured output
+            **kwargs
+        )
 
     def _freeze_base_model(self):
         frozen_count = 0
@@ -172,3 +178,15 @@ class GradientValidator:
     
     def validate_base_model_frozen(self, base_model) -> bool:
         return all(not p.requires_grad for p in base_model.parameters())
+
+def call_general_llm(query: str) -> str:
+    """
+    Simulates calling a general-purpose Large Language Model for queries
+    that are outside the scope of the local knowledge base.
+    """
+    print("\n[--- Calling General-Purpose LLM (Simulation) ---]")
+    print(f"Query: {query}")
+    response = f"This is a simulated response from a general-purpose LLM for the query: '{query}'"
+    print(f"Response: {response}")
+    print("[-------------------------------------------------]\n")
+    return response

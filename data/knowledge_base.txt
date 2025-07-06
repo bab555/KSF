@@ -1,10 +1,4 @@
-The capital of France is Paris.
-The main component of water is H2O.
-The sun rises in the east and sets in the west.
-Python is a popular programming language known for its readability.
-The Knowledge Synthesized Framework (KSF) aims to integrate a reasoning synthesizer with a parametric knowledge bank.
-Large language models are trained on vast amounts of text data.
-Cross-attention is a mechanism used in transformers to integrate information from different sources.
-The Qwen3 series of models represents a significant advancement in open-source AI.
-Semantic search allows finding information based on meaning rather than just keywords.
-A knowledge base can be either static or dynamically updated. 
+第一条知识：云和县位于浙江省丽水市，拥有优美的自然风光，特别是云和梯田，吸引了大量游客。这里的经济发展迅速，尤其是在木制玩具产业方面。
+第二条知识：在云计算领域，云和服务的结合是未来的趋势。通过云平台，我们可以实现服务的快速部署和弹性伸缩。这种模式极大地提高了IT资源的利用效率。
+第三条知识：苹果公司发布了新款手机，其设计和性能都得到了市场的广泛认可。苹果的生态系统是其核心竞争力之一。
+第四条知识：多吃苹果有益健康，它富含维生素和纤维。作为一种水果，苹果在全球范围内都非常受欢迎。 
