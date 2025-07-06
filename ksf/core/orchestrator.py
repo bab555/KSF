@@ -4,20 +4,13 @@ KSF核心编排器
 """
 
 import logging
-import os
-from typing import Dict, List, Any, Optional
-from pathlib import Path
-import torch
 import json
+from typing import Dict, Any
 
 from ..k_module.discoverer import KnowledgeDiscoverer
-from ..k_module.data_structures import RerankedItem
 from ..s_module.assembler import PromptAssembler
-from ..utils.data_utils import load_knowledge_base_from_file
-from ..utils import pseudo_api_wrapper
-from peft import PeftModel
 
-# Setup logging
+# --- 日志设置 ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -29,31 +22,30 @@ class KSFOrchestrator:
     """
     
     def __init__(self, config: Dict[str, Any]):
-        self.logger = logging.getLogger(self.__class__.__name__)
-        self.logger.info("🔧 Initializing KSF V3 Orchestrator...")
+        logger.info("🔧 正在初始化KSF V3编排器...")
         
-        # --- K-Module Initialization ---
+        # --- K-Module 初始化 ---
         k_config = config['discoverer']
-        self.logger.info(f"📚 Initializing K-Module with knowledge file: {k_config['knowledge_file']}")
+        logger.info(f"📚 正在初始化K模块，知识文件: {k_config['knowledge_file']}")
         
         self.discoverer = KnowledgeDiscoverer(**k_config)
         self.discoverer.load_or_build_index(force_rebuild=config.get('force_rebuild_index', False))
         
-        # --- S-Module Initialization ---
+        # --- S-Module 初始化 ---
         s_config = config['assembler']
-        self.logger.info("🔧 Initializing S-Module (Prompt Assembler)...")
+        logger.info("🔧 正在初始化S模块 (提示装配器)...")
         
-        # Load the knowledge manifest
+        # 加载知识清单 (Manifest)
         manifest_path = s_config['manifest_path']
         try:
             with open(manifest_path, 'r', encoding='utf-8') as f:
                 manifest = json.load(f)
-            self.logger.info(f"✓ Knowledge Manifest loaded from {manifest_path}")
+            logger.info(f"✓ 知识清单加载成功: {manifest_path}")
         except FileNotFoundError:
-            self.logger.error(f"FATAL: Knowledge Manifest not found at {manifest_path}. Please run the build script.")
+            logger.error(f"致命错误: 在 {manifest_path} 未找到知识清单。请先运行构建脚本。")
             raise
         except json.JSONDecodeError:
-            self.logger.error(f"FATAL: Could not decode Knowledge Manifest at {manifest_path}.")
+            logger.error(f"致命错误: 无法解析 {manifest_path} 的知识清单。")
             raise
 
         self.assembler = PromptAssembler(
@@ -61,81 +53,80 @@ class KSFOrchestrator:
             manifest=manifest
         )
 
-        # Final check
-        self.logger.info("✅ KSF V3 Orchestrator Initialized Successfully.")
+        logger.info("✅ KSF V3 编排器初始化成功。")
     
     def query(self, query_text: str, top_k: int = 5) -> Dict[str, Any]:
         """
-        Processes a user query using the new "Dynamic K-S-Collaboration" model.
-        K-Module provides an initial "instinctive" retrieval, while S-Module
-        analyzes the query to provide "corrective" instructions if needed.
+        使用"动态K-S协作"模型处理用户查询。
+        K模块提供初步的"直觉"检索，S模块则分析查询以在需要时提供"校正"指令。
         """
-        self.logger.info(f"🚀 Started processing query: {query_text}")
+        logger.info(f"🚀 开始处理查询: {query_text}")
 
-        # --- Stage 1a (Parallel): S-Module analyzes the query and generates a retrieval instruction ---
+        # --- 阶段1: S模块分析查询并生成检索指令 ---
         s_instruction = self.assembler.generate_instruction(query_text)
-        self.logger.info(f"✅ S-Module generated instruction: {s_instruction}")
+        logger.info(f"✅ S模块生成指令: {s_instruction}")
 
-        # --- Stage 2: Decision Point based on S-Module's analysis ---
+        # --- 阶段2: 基于S模块的分析进行决策 ---
 
-        # Path 1: S-Module rejects the query outright.
+        # 路径1: S模块直接拒绝查询
         if s_instruction.mode == 'REJECT':
-            self.logger.warning(f"🛑 Instruction rejected by S-Module: {s_instruction.filters.get('reason')}")
-            return {"answer": s_instruction.filters.get('reason', "无法回答此问题。"), "knowledge_packet": {}}
+            rejection_reason = s_instruction.filters.get('reason', "无法回答此问题。")
+            logger.warning(f"🛑 S模块拒绝了该指令: {rejection_reason}")
+            return {"answer": rejection_reason, "knowledge_packet": {}}
 
-        # Path 2: S-Module deems the query complex and requires a specific, guided retrieval.
-        # This is the "S-Corrects" path where S's instruction overrides K's instinct.
-        if s_instruction.mode != 'SEMANTIC':
-            self.logger.info(f"S-Module issued a corrective instruction ({s_instruction.mode}). Overriding K-Module's instinct.")
-            retrieved_items = self.discoverer.retrieve_direct_knowledge(s_instruction, top_k=top_k * 2)
-            self.logger.info(f"🧠 K-Module performed a GUIDED retrieval, found {len(retrieved_items)} items.")
+        # 路径2: S模块未拒绝，由K模块执行检索 (无论是指导性还是常规性)
+        # 注意：无论S模块是提供校正指令(如'ENTITY_FOCUS')还是默认的'SEMANTIC'，
+        # K模块的 `retrieve_direct_knowledge` 都使用该指令来指导其操作。
+        # 这统一了"S校正"和"K直觉"两种路径。
+        log_msg = (
+            f"S模块发出了一个校正指令 ({s_instruction.mode})。"
+            if s_instruction.mode != 'SEMANTIC' 
+            else "S模块通过了查询，使用K模块的直觉检索。"
+        )
+        logger.info(log_msg)
         
-        # Path 3: S-Module finds the query straightforward (pass-through).
-        # We trust K-Module's "instinctive" first pass.
-        else:
-            self.logger.info("S-Module passed the query. Using K-Module's instinctive retrieval.")
-            retrieved_items = self.discoverer.retrieve_direct_knowledge(s_instruction, top_k=top_k * 2)
-            self.logger.info(f"🧠 K-Module performed an INSTINCTIVE retrieval, found {len(retrieved_items)} items.")
+        retrieved_items = self.discoverer.retrieve_direct_knowledge(s_instruction, top_k=top_k * 2) # 取2*top_k作为候选
+        logger.info(f"🧠 K模块执行检索，找到 {len(retrieved_items)} 个候选项。")
 
         if not retrieved_items:
-            self.logger.warning("K-Module returned no results.")
+            logger.warning("K模块未返回任何结果。")
             return {"answer": "抱歉，我在知识库中找不到相关信息。", "knowledge_packet": {}}
             
-        # --- Stage 3: S-Module assesses relevance of the chosen candidates (either from guided or instinctive path) ---
-        self.logger.info("🔬 S-Module assessing relevance of candidates...")
+        # --- 阶段3: S模块对候选集进行相关性评估 ---
+        logger.info("🔬 S模块正在评估候选项的相关性...")
         
-        # Use a temporary list of tuples to hold items and their relevance scores
+        # 使用一个临时元组列表来存储候选项及其相关性得分
         scored_items = []
         for item in retrieved_items:
             relevance_score = self.assembler.analyzer.assess_relevance(query_text, item.content)
-            if relevance_score > 0.3: # Relevance threshold
+            if relevance_score > 0.3: # 相关性阈值
                 scored_items.append((item, relevance_score))
-                self.logger.info(f"  - Item '{item.id}' is RELEVANT (Score: {relevance_score:.2f})")
+                logger.info(f"  - 候选项 '{item.id}' 相关 (得分: {relevance_score:.2f})")
             else:
-                self.logger.info(f"  - Item '{item.id}' is NOT RELEVANT (Score: {relevance_score:.2f})")
+                logger.info(f"  - 候选项 '{item.id}' 不相关 (得分: {relevance_score:.2f})")
 
-        # Sort by relevance score in descending order
+        # 按相关性得分降序排序
         scored_items.sort(key=lambda x: x[1], reverse=True)
         
-        # Extract the sorted RerankedItem objects
+        # 提取排序后的 RerankedItem 对象
         final_knowledge = [item for item, score in scored_items[:top_k]]
         
-        self.logger.info(f"✅ Final filtered knowledge packet contains {len(final_knowledge)} items.")
+        logger.info(f"✅ 最终过滤后的知识包包含 {len(final_knowledge)} 个条目。")
 
-        # --- Stage 4: S-Module assembles the final prompt/answer ---
+        # --- 阶段4: S模块装配最终的答案 ---
         knowledge_packet = {
             "query": query_text,
             "direct_knowledge": final_knowledge,
-            "associated_knowledge": [] # Placeholder for now
+            "associated_knowledge": [] # 暂时保留
         }
         
         final_answer = self.assembler.assemble_prompt(knowledge_packet)
-        self.logger.info(f"✅ Final answer assembled.")
+        logger.info("✅ 最终答案已装配完成。")
         
         return {"answer": final_answer, "knowledge_packet": knowledge_packet}
     
     def get_system_status(self) -> Dict[str, Any]:
-        """Returns a dictionary with the current status of the system."""
+        """返回系统的当前状态字典。"""
         status = {
             "k_module_status": {
                 "model_name": self.discoverer.model_name,
@@ -150,21 +141,21 @@ class KSFOrchestrator:
         }
         return status
     
-    def rebuild_knowledge_index(self):
+    def rebuild_knowledge_index(self, force_rebuild: bool = True):
         """
-        Rebuilds the knowledge index. Useful when the knowledge base is updated.
+        重建知识索引。当知识库更新时非常有用。
         """
-        logger.info("🔄 Rebuilding knowledge index...")
+        logger.info("🔄 正在重建知识索引...")
         
-        # The knowledge base is already loaded during init, so we just need to re-encode and build.
-        # This assumes the file at self.knowledge_base_path has been updated.
-        logger.info("Re-loading knowledge base from disk...")
-        self.discoverer.load_knowledge_base(self.knowledge_base_path)
+        # 知识库在初始化时已加载，我们只需重新编码和构建。
+        # 此处假设 self.discoverer.knowledge_file_path 的文件已被更新。
+        logger.info("正在从磁盘重新加载知识库...")
+        self.discoverer.load_knowledge_base()
         
-        logger.info("Building and saving new index...")
-        self.discoverer.build_and_save_index()
+        logger.info("正在构建并保存新索引...")
+        self.discoverer.load_or_build_index(force_rebuild=force_rebuild)
         
-        logger.info("✅ Knowledge index rebuilt successfully.")
+        logger.info("✅ 知识索引重建成功。")
     
     def add_custom_template(self, name: str, template_content: str):
         """
@@ -175,7 +166,7 @@ class KSFOrchestrator:
             template_content: 模板内容
         """
         self.assembler.add_custom_template(name, template_content)
-        logger.info(f"✅ Added custom template: {name}")
+        logger.info(f"✅ 已添加自定义模板: {name}")
     
     def test_system(self, test_query: str = "测试查询") -> Dict[str, Any]:
         """
@@ -197,8 +188,8 @@ class KSFOrchestrator:
             )
             
             # 检查结果
-            assert result is not None, "System test failed: query returned None"
-            assert 'final_prompt' in result and result['final_prompt'], "System test failed: final_prompt is empty"
+            assert result is not None, "系统测试失败: 查询返回None"
+            assert 'final_prompt' in result and result['final_prompt'], "系统测试失败: final_prompt is empty"
             
             test_results = {
                 'basic_query_test': {

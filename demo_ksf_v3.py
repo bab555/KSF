@@ -50,7 +50,7 @@ def main():
             "templates_dir": "ksf/s_module/templates",
             "manifest_path": "data/knowledge_manifest.json"
         },
-        "force_rebuild_index": True # 如果为True，则强制重建索引
+        "force_rebuild_index": False # 如果为True，则强制重建索引；设为False以在后续运行中加快启动速度
     }
 
     print("==================================================")

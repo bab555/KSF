@@ -52,168 +52,11 @@ class PromptAssembler:
             'comparison': self._handle_comparison_strategy,
             'analysis': self._handle_analysis_strategy,
             'guide': self._handle_guide_strategy,
-            'decision': self._handle_decision_strategy,
             'general': self._handle_general_strategy
         }
         
-        # 初始化默认模板
-        self._create_default_templates()
-        
         logger.info(f"✓ 提示装配引擎初始化完成，模板目录: {self.templates_dir}")
-        logger.info("✓ S-Module 'Intelligent Toolkit' initialized with knowledge manifest.")
-    
-    def _create_default_templates(self):
-        """创建默认的模板文件"""
-        templates = {
-            'comparison.jinja2': '''**Analysis Topic:**
-{{ topic }}
-
-**Comparison Framework:**
-{% if comparison_aspects %}
-{% for aspect, items in comparison_aspects.items() %}
-{% if items %}
-**{{ aspect.title() }} Dimension:**
-{% for item in items %}
-• {{ item }}
-{% endfor %}
-{% endif %}
-{% endfor %}
-{% endif %}
-
-**Direct Knowledge Points:**
-{% for item in direct_knowledge %}
-• {{ item.content }} (Score: {{ "%.2f"|format(item.final_score) }})
-{% endfor %}
-
-{% if hidden_associations %}
-**Related Considerations:**
-{% for assoc in hidden_associations %}
-• {{ assoc.explanation }} (Strength: {{ "%.2f"|format(assoc.strength) }})
-{% endfor %}
-{% endif %}
-
-{% if pros_cons.pros or pros_cons.cons %}
-**Pros & Cons Analysis:**
-{% if pros_cons.pros %}
-**Advantages:**
-{% for pro in pros_cons.pros %}
-• {{ pro }}
-{% endfor %}
-{% endif %}
-{% if pros_cons.cons %}
-**Disadvantages:**
-{% for con in pros_cons.cons %}
-• {{ con }}
-{% endfor %}
-{% endif %}
-{% endif %}''',
-            
-            'analysis.jinja2': '''**Analysis Subject:**
-{{ topic }}
-
-**Strategic Overview:**
-{% if strategic_points %}
-{% for point in strategic_points %}
-• {{ point }}
-{% endfor %}
-{% endif %}
-
-**Key Information:**
-{% for item in direct_knowledge %}
-• {{ item.content }}
-  - Source: {{ item.id }}
-  - Score: {{ "%.2f"|format(item.final_score) }}
-  - (Similarity: {{ "%.2f"|format(item.original_similarity) }}, PageRank: {{ "%.2f"|format(item.pagerank_weight) }})
-{% endfor %}
-
-{% if hidden_associations %}
-**Extended Context:**
-{% for assoc in hidden_associations %}
-• {{ assoc.related_concept }}: {{ assoc.explanation }}
-{% endfor %}
-{% endif %}
-
-{% if temporal_aspects %}
-**Temporal Considerations:**
-{% for period, items in temporal_aspects.items() %}
-{% if items %}
-**{{ period.replace('_', ' ').title() }}:**
-{% for item in items %}
-• {{ item }}
-{% endfor %}
-{% endif %}
-{% endfor %}
-{% endif %}
-
-{% if risk_factors %}
-**Risk Assessment:**
-{% for risk in risk_factors %}
-• {{ risk }}
-{% endfor %}
-{% endif %}''',
-            
-            'guide.jinja2': '''**Guide Topic:**
-{{ topic }}
-
-**Step-by-Step Framework:**
-
-{% if action_items %}
-**Action Items:**
-{% for action in action_items %}
-**Step {{ loop.index }}:** {{ action }}
-{% endfor %}
-{% endif %}
-
-**Supporting Knowledge:**
-{% for item in direct_knowledge %}
-• {{ item.content }} (Score: {{ "%.2f"|format(item.final_score) }})
-{% endfor %}
-
-{% if hidden_associations %}
-**Additional Considerations:**
-{% for assoc in hidden_associations %}
-• {{ assoc.explanation }}
-{% endfor %}
-{% endif %}
-
-{% if risk_factors %}
-**Important Warnings:**
-{% for risk in risk_factors %}
-• {{ risk }}
-{% endfor %}
-{% endif %}''',
-            
-            'general.jinja2': '''**Query:**
-{{ query }}
-
-**Knowledge Base Response:**
-
-**Primary Information:**
-{% for item in direct_knowledge %}
-• {{ item.content }}
-  (Score: {{ "%.2f"|format(item.final_score) }}, Similarity: {{ "%.2f"|format(item.original_similarity) }})
-{% endfor %}
-
-{% if hidden_associations %}
-**Related Insights:**
-{% for assoc in hidden_associations %}
-• {{ assoc.explanation }}
-{% endfor %}
-{% endif %}
-
-**Confidence Mapping:**
-{% for key, weight in attention_weights.items() %}
-• {{ key }}: {{ "%.2f"|format(weight) }}
-{% endfor %}'''
-        }
-        
-        # 创建模板文件
-        for filename, content in templates.items():
-            template_path = self.templates_dir / filename
-            if not template_path.exists():
-                with open(template_path, 'w', encoding='utf-8') as f:
-                    f.write(content)
-                logger.info(f"✓ 创建默认模板: {filename}")
+        logger.info("✓ S模块的'智能工具箱'已使用知识清单初始化。")
     
     def assemble_prompt(self, knowledge_packet: Dict[str, Any], 
                        strategy: Optional[str] = None) -> str:
@@ -341,43 +184,36 @@ class PromptAssembler:
                 return self._fallback_prompt(prompt_data)
     
     def _fallback_prompt(self, prompt_data: Dict[str, Any]) -> str:
-        """A simple fallback prompt generator if all else fails."""
-        lines = ["--- Fallback Prompt ---"]
-        lines.append(f"Query: {prompt_data.get('query', 'N/A')}")
-        lines.append("\nRelevant Information:")
-        
-        knowledge = prompt_data.get('direct_knowledge', [])
-        if not knowledge:
-            lines.append("  - No relevant information found.")
-        else:
-            for item in knowledge:
-                lines.append(f"  • {item.content}")
-                
-        return "\\n".join(lines)
+        """一个健壮的备用提示，以防主模板渲染失败。"""
+        try:
+            # 尝试使用一个最基础的模板
+            template_string = """
+            **查询:**
+            {{ query }}
+
+            **相关信息:**
+            {% for item in direct_knowledge %}
+            - {{ item.content }} (ID: {{ item.id }})
+            {% endfor %}
+            """
+            template = self.env.from_string(template_string)
+            return template.render(prompt_data)
+        except Exception as e:
+            logger.error(f"备用提示词渲染失败: {e}")
+            # 如果连备用模板都失败了，就只返回最基本的信息
+            items_str = "\n".join([f"- {item.content}" for item in prompt_data.get('direct_knowledge', [])])
+            return f"查询: {prompt_data.get('query')}\n\n知识点:\n{items_str}"
     
     def _handle_comparison_strategy(self, prompt_data: Dict[str, Any]) -> Dict[str, Any]:
-        """处理对比策略的特殊逻辑"""
-        # 这里可以添加对比策略的特殊处理逻辑
         return prompt_data
     
     def _handle_analysis_strategy(self, prompt_data: Dict[str, Any]) -> Dict[str, Any]:
-        """处理分析策略的特殊逻辑"""
-        # 这里可以添加分析策略的特殊处理逻辑
         return prompt_data
     
     def _handle_guide_strategy(self, prompt_data: Dict[str, Any]) -> Dict[str, Any]:
-        """处理指南策略的特殊逻辑"""
-        # 这里可以添加指南策略的特殊处理逻辑
-        return prompt_data
-    
-    def _handle_decision_strategy(self, prompt_data: Dict[str, Any]) -> Dict[str, Any]:
-        """处理决策策略的特殊逻辑"""
-        # 这里可以添加决策策略的特殊处理逻辑
         return prompt_data
     
     def _handle_general_strategy(self, prompt_data: Dict[str, Any]) -> Dict[str, Any]:
-        """处理通用策略的特殊逻辑"""
-        # 这里可以添加通用策略的特殊处理逻辑
         return prompt_data
     
     def add_custom_template(self, name: str, template_content: str):
@@ -391,18 +227,11 @@ class PromptAssembler:
         template_path = self.templates_dir / f"{name}.jinja2"
         with open(template_path, 'w', encoding='utf-8') as f:
             f.write(template_content)
-        logger.info(f"✓ 添加自定义模板: {name}")
+        logger.info(f"模板 '{name}.jinja2' 已保存至 {self.templates_dir}")
     
-    def list_available_templates(self) -> List[str]:
-        """列出可用的模板"""
-        templates = []
-        for template_file in self.templates_dir.glob("*.jinja2"):
-            templates.append(template_file.stem)
-        return templates
-
     def list_templates(self) -> List[str]:
-        """Lists the available template names."""
-        return self.env.list_templates()
+        """列出可用的模板"""
+        return [f.stem for f in self.templates_dir.glob('*.jinja2')]
 
     def generate_instruction(self, query_text: str) -> RetrievalInstruction:
         """

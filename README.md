@@ -54,7 +54,7 @@ S模块是系统的"大脑"，通过内置的"智能工具箱"来理解和组织
 
 ### 3.1. 环境要求
 - Python 3.8+
-- PyTorch 2.7+
+- PyTorch 2.0+
 - CUDA 支持的GPU（推荐）
 
 ### 3.2. 安装与运行
@@ -80,14 +80,26 @@ S模块是系统的"大脑"，通过内置的"智能工具箱"来理解和组织
 ```
 Knowledge-Synthesized-Framework/
 ├── ksf/                  # 核心框架代码
-│   ├── core/             # 编排器
-│   ├── k_module/         # K模块
-│   └── s_module/         # S模块
-├── configs/              # 配置文件
-├── data/                 # 数据与知识库
-├── scripts/              # 工具脚本
-├── checkpoints/          # 模型检查点与索引
-└── demo_ksf_v3.py        # 演示脚本
+│   ├── core/             # 编排器 (Orchestrator)
+│   ├── k_module/         # K模块 (知识发现器)
+│   ├── s_module/         # S模块 (提示装配器)
+│   ├── training/         # 训练相关模块
+│   └── utils/            # 工具函数
+├── configs/              # 配置文件 (例如 ksf_training_config.yaml)
+├── data/                 # 知识库原始数据
+├── scripts/              # 数据预处理与模型训练脚本
+│   ├── prepare_yunhe_data.py
+│   ├── identify_ambiguous_terms.py
+│   ├── build_disambiguation_dict.py
+│   ├── build_knowledge_graph.py
+│   ├── build_knowledge_manifest.py
+│   └── train_adapter.py
+├── checkpoints/          # 模型检查点、适配器与FAISS索引
+│   ├── k_module_adapter/
+│   └── k_module_index_v3_yunhe_adapted/
+├── demo_ksf_v3.py        # 演示脚本
+├── README.md             # 本文档
+└── requirements.txt      # 依赖列表
 ```
 
 ### 4.2. 贡献与联系
