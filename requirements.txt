@@ -54,4 +54,8 @@ matplotlib
 scikit-learn
 openpyxl
 spacy
-sentencepiece 
+sentencepiece
+
+# Web UI and PDF Processing
+gradio
+PyPDF2 
