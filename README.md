@@ -1,117 +1,96 @@
-# 知识合成框架 (Knowledge-Synthesized-Framework, KSF) v3
+# 知识合成框架 (Knowledge-Synthesized Framework - KSF) v5.1
 
-## 1. 项目简介与架构演进
+[![版本](https://img.shields.io/badge/Version-5.1-blue.svg)](https://github.com/your-repo/KSF)
+[![状态](https://img.shields.io/badge/Status-功能增强迭代中-green.svg)](https://github.com/your-repo/KSF)
+[![架构](https://img.shields.io/badge/Architecture-四层共振模型-orange.svg)](https://github.com/your-repo/KSF)
 
-知识合成框架 (KSF) 是一套先进的模块化系统，旨在通过动态生成高度优化的、情境感知的内容，增强在特定知识领域的响应能力。
+**知识合成框架 (KSF)** 是一套先进的本地知识处理系统，其设计目标是超越传统的检索增强生成 (RAG)，实现对复杂、多源知识的深度理解、结构化重组和精准合成，为大型语言模型（LLM）提供高度优化、低幻觉的上下文，同时最大化本地模型的分析能力。
 
-### V3架构升级：从"注入"到"协作"
-
-KSF v3是一次彻底的架构重构，其核心是从一个单向的"注入"模型，演进为一个双向的"动态协作"模型。
-
-**为何放弃V1的"偏置注入" (Bias Injection)方案？**
-旧版KSF曾探索通过"偏置注入"技术直接影响模型内部权重。然而，该方案存在根本性缺陷：
-*   **泛化性差**：与特定模型架构深度耦合，难以适应快速迭代的模型。
-*   **接口废弃**：现代高级大语言模型（LLM）出于安全、稳定和黑盒化的考虑，已普遍**不再提供或支持**此类深入内部的偏置调整接口。
-
-因此，KSF v3转向了一个更灵活、更健壮的全新范式。
+v5.1版本标志着KSF在**架构自洽**和**功能激活**上的重大突破，正式从"三层共振模型"升级为**"四层知识共振模型"**，并全面激活了S模块的分析与内容增强能力，使框架的智能化水平和输出内容的价值得到了质的飞跃。
 
 ---
 
-## 2. 核心理念与技术架构
+## 核心特性
 
-### 2.1. K-S动态协作模型
-
-KSF v3的核心思想，是将复杂的知识合成任务解耦为两个独立但紧密协作的模块：
-
-*   🧠 **K-Module (知识发现器)**: 扮演**"直觉引擎"**角色。它负责基于向量相似性和图结构重要性，进行快速、发散的知识探索。
-*   🎯 **S-Module (提示装配引擎)**: 扮演**"逻辑引擎"**角色。它负责分析用户意图，对K模块的检索过程进行**"校正指导"**，最终装配出结构清晰的答案。
-
-这种 **"K-first, S-corrects"** 的动态协作，由一个中心**Orchestrator（编排器）** 指挥，使得整个系统既有广度又有深度。
-
-### 2.2. K-Module: "语义检索 + 图重排序"双阶段引擎
-
-K模块通过一套"组合拳"来确保检索到的知识既**相关**又**重要**。
-
-*   **阶段一：语义检索 (Semantic Retrieval)**
-    *   **核心模型**: 采用 `Snowflake/snowflake-arctic-embed-m` 作为基础语义模型，并加载了针对特定领域微调的**PEFT适配器**。
-    *   **实现**: 将知识点预处理为`FAISS`向量索引，进行高效的向量相似度搜索。
-
-*   **阶段二：图重排序 (Graph-based Reranking)**
-    *   **核心思想**: 评估知识在整个知识体系中的**"结构重要性"**。
-    *   **实现**: 离线构建知识图谱并运行**PageRank算法**计算全局权重，再结合语义相似分进行重排序。
-        \[
-        \text{Final Score} = \alpha \times (\text{PageRank Weight}) + (1 - \alpha) \times (\text{Original Similarity})
-        \]
-
-### 2.3. S-Module: 具备"工具箱"的智能分析核心
-
-S模块是系统的"大脑"，通过内置的"智能工具箱"来理解和组织信息。
-*   **核心功能**: 意图分析、实体识别、生成指导K模块的**"检索指令"** (`RetrievalInstruction`)，并利用`Jinja2`模板引擎进行最终答案装配。
+-   **先进的四层知识共振模型**: 业界领先的混合式排序算法，在一次检索中综合评估四个维度的信息，确保结果既相关又重要。
+    -   `α * S_q`: **语义相关度** - 知识与查询的直接相关性。
+    -   `β * S_s`: **结构重要性** - 知识在全局知识图谱中的权威性 (PageRank)。
+    -   `γ * S_c`: **来源置信度** - 知识的类型（核心事实、上下文、概念）。
+    -   `δ * S_e`: **实体引导** - 来自S模块的"提醒"，对包含关键实体的知识进行定向加权。
+-   **K-S解耦与动态协作**: K模块（直觉引擎）负责快速、广泛的召回；S模块（推理引擎）负责精准分析和编排。S模块通过可调节的`δ`权重，实现了对K模块的**可控影响**，完美平衡了"精准制导"与"意外发现"。
+-   **全自动数据预处理工具链 (`scripts/`)**: 提供一整套强大的数据"脚手架"，将原始数据转化为高质量的知识库。
+    -   **歧义自动发现**: 利用向量差异，自动化挖掘并报告潜在的同词不同义问题。
+    -   **知识图谱构建**: 自动构建知识图谱并计算PageRank，量化每个知识点的重要性。
+    -   **多轨统一索引**: 将"核心知识"、"上下文知识"和"概念词汇"三种异构数据源，统一编码进一个FAISS索引中。
+-   **S模块的深度分析与内容增强**:
+    -   **意图分析**: 使用零样本分类（Zero-Shot Classification）模型理解用户意图，为后续的决策提供依据。
+    -   **自动摘要与标注**: 调用内置的`processors`工具包，自动从知识中提取**风险、行动项、优缺点**等信息，并在答案前端生成"综合洞察摘要"，极大提升输出内容的价值。
+-   **灵活的"连接器"架构**: 将核心检索逻辑与底层向量存储（FAISS, Milvus等）完全解耦，可像"插拔U盘"一样轻松更换或组合数据库。
 
 ---
 
-## 3. 快速开始
+## 运行机制
 
-### 3.1. 环境要求
-- Python 3.8+
-- PyTorch 2.0+
-- CUDA 支持的GPU（推荐）
+<p align="center">
+  <img src="https://i.imgur.com/your-diagram-image.png" alt="KSF Architecture" width="800"/>
+  <br/>
+  <em>KSF v5.1 完整工作流。详情请见 <code>docs/ARCHITECTURE.md</code>。</em>
+</p>
 
-### 3.2. 安装与运行
-1.  **安装依赖**:
+1.  **查询分析 (S-Module)**: 用户查询首先由S模块的`IntentAnalyzer`进行意图识别和实体提取，生成一份结构化的`RetrievalInstruction`。
+2.  **四层共振检索 (K-Module)**: K模块接收`Instruction`，并执行四层共振算法。`δ`权重在此刻生效，对S模块"提醒"的实体相关知识进行加分。最终产出一个包含主知识、上下文知识和涌现概念的`ResonancePacket`。
+3.  **答案合成 (S-Module)**: S模块的`PromptAssembler`接收`ResonancePacket`。它首先调用`processors`工具包对知识进行分析和标注，然后在Jinja2模板中渲染出一个包含"综合洞察摘要"和详细知识支撑的、结构化的最终答案。
+
+---
+
+## 快速开始
+
+1.  **环境设置**:
     ```bash
+    # 建议在虚拟环境中操作
+    python -m venv ksf_env
+    source ksf_env/bin/activate  # on Linux/macOS
+    # ksf_env\Scripts\activate   # on Windows
+
+    # 安装依赖
     pip install -r requirements.txt
     ```
-2.  **准备模型与数据**:
-    *   确保您的基础模型 (如 `snowflake-arctic-embed-m`) 已下载。
-    *   确保您的知识库文件 (如 `云和文旅知识库数据集.json`) 已放在`data/`目录下。
-3.  **检查配置**:
-    *   打开 `demo_ksf_v3.py`，检查 `config` 字典中的模型和文件路径是否正确。
-4.  **运行演示**:
+
+2.  **下载模型 (如果需要)**:
+    S模块的`IntentAnalyzer`依赖一些外部模型。首次运行时，`transformers`库会自动下载它们。如果您的环境无法访问Hugging Face，请手动下载以下模型并修改`ksf/s_module/analyzer.py`中的加载路径：
+    -   NER模型: `spacy/zh_core_web_md`
+    -   分类模型: `MoritzLaurer/deberta-v3-base-zeroshot-v1.1-all-33`
+
+3.  **数据准备与索引构建**:
+    请先准备好您的原始知识库文件（如`data/my_knowledge.jsonl`）。然后，依次运行以下脚本：
     ```bash
-    python demo_ksf_v3.py
+    # 步骤1: 识别原始数据中的潜在歧义词 (人工审核可选)
+    # python scripts/identify_ambiguous_terms.py --input_file data/your_data.jsonl
+    
+    # 步骤2: (如果进行了人工审核) 根据审核结果生成消歧义词典
+    # python scripts/build_disambiguation_dict.py
+    
+    # 步骤3: 构建知识图谱，计算PageRank权重
+    python scripts/build_knowledge_graph.py --input_file data/your_data.jsonl --output_dir checkpoints/my_kg
+    
+    # 步骤4: 构建最终的多轨统一索引
+    python scripts/build_extended_index.py --primary data/your_data.jsonl --output_dir checkpoints/my_index --config configs/ksf_config.yaml
     ```
+    *注意: 请确保`ksf_config.yaml`中的路径指向您刚刚生成的索引和权重目录。*
+
+4.  **运行交互式演示**:
+    ```bash
+    python run.py
+    ```
+    现在，您可以输入查询，体验KSF v5.1强大的知识合成能力了！
 
 ---
 
-## 4. 项目信息
+## 架构蓝图
 
-### 4.1. 项目结构
-```
-Knowledge-Synthesized-Framework/
-├── ksf/                  # 核心框架代码
-│   ├── core/             # 编排器 (Orchestrator)
-│   ├── k_module/         # K模块 (知识发现器)
-│   ├── s_module/         # S模块 (提示装配器)
-│   ├── training/         # 训练相关模块
-│   └── utils/            # 工具函数
-├── configs/              # 配置文件 (例如 ksf_training_config.yaml)
-├── data/                 # 知识库原始数据
-├── scripts/              # 数据预处理与模型训练脚本
-│   ├── prepare_yunhe_data.py
-│   ├── identify_ambiguous_terms.py
-│   ├── build_disambiguation_dict.py
-│   ├── build_knowledge_graph.py
-│   ├── build_knowledge_manifest.py
-│   └── train_adapter.py
-├── checkpoints/          # 模型检查点、适配器与FAISS索引
-│   ├── k_module_adapter/
-│   └── k_module_index_v3_yunhe_adapted/
-├── demo_ksf_v3.py        # 演示脚本
-├── README.md             # 本文档
-└── requirements.txt      # 依赖列表
-```
+想深入了解KSF的设计哲学、模块细节和交互协议吗？请参阅我们为您准备的详细技术文档：
 
-### 4.2. 贡献与联系
-- **开发者**: 易尘/bab555
-- **邮箱**: bab55@163.com
-- **GitHub**: [https://github.com/bab555/ksf](https://github.com/bab555/ksf)
-
-欢迎提交Issue和Pull Request！
-
-### 4.3. 许可证
-本项目采用 **CC BY-NC-SA 4.0** 许可证 - 详见 [LICENSE](LICENSE) 文件。
-⚠️ **重要说明**: 本项目仅供**非商业用途**使用。商业使用请联系开发者获取授权。
+**[KSF架构设计蓝图 (`docs/ARCHITECTURE.md`)](docs/ARCHITECTURE.md)**
 
 ---
-**开发团队**: 红点天枢 
+*此README最后更新于 KSF v5.1 - 功能激活与四层共振模型版本。*

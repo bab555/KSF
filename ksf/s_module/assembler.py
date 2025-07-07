@@ -1,271 +1,179 @@
 """
 S模块核心实现：提示装配引擎
-负责将K模块的知识包装配成结构化提示词
+KSF 4.x: 负责将K模块的ResonancePacket包装成结构化输出
 """
-
 import json
 from typing import Dict, List, Any, Optional
 from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, Template
 import logging
 
-from .processors import (
-    tag_pros_cons, extract_strategic_points, tag_comparison_aspects,
-    tag_temporal_aspects, extract_action_items, tag_risk_factors
-)
 from .analyzer import IntentAnalyzer
-from ..k_module.data_structures import RetrievalInstruction
+from ..k_module.data_structures import RetrievalInstruction, ResonancePacket
+from . import processors
 
 logger = logging.getLogger(__name__)
 
+# --- 自定义 Jinja2 过滤器 ---
+def _first_line_filter(text: str) -> str:
+    """返回文本的第一行。"""
+    if not text:
+        return ""
+    return text.splitlines()[0]
+
+def _other_lines_filter(text: str) -> str:
+    """返回除第一行外的所有行。"""
+    if not text:
+        return ""
+    lines = text.splitlines()
+    if len(lines) <= 1:
+        return ""
+    return "\n".join(lines[1:])
 
 class PromptAssembler:
     """
     提示装配引擎
-    非生成式的、基于规则的结构化数据转换引擎
+    KSF 4.x: 将K模块的输出（ResonancePacket）进行结构化呈现。
+    不再进行复杂的语义标注，而是专注于展示K模块的发现。
     """
     
     def __init__(self, templates_dir: str, manifest: Dict[str, Any]):
-        """
-        初始化提示装配引擎
-        
-        Args:
-            templates_dir: 模板目录路径
-            manifest: 知识库的元数据
-        """
         self.templates_dir = Path(templates_dir) if templates_dir else Path(__file__).parent / "templates"
         self.templates_dir.mkdir(exist_ok=True)
         
-        # 初始化Jinja2环境
         self.env = Environment(
             loader=FileSystemLoader(str(self.templates_dir)),
             trim_blocks=True,
             lstrip_blocks=True
         )
+        # 注册自定义过滤器
+        self.env.filters['first_line'] = _first_line_filter
+        self.env.filters['other_lines'] = _other_lines_filter
         
-        # Initialize the intelligent toolkit with the knowledge manifest
+        # 注册 processors 模块中的所有函数为全局函数，以便在模板中直接调用
+        self.env.globals['processors'] = processors
+
         self.analyzer = IntentAnalyzer(manifest=manifest)
         self.manifest = manifest
         
-        # 策略映射：根据查询类型选择处理策略
-        self.strategy_mapping = {
-            'comparison': self._handle_comparison_strategy,
-            'analysis': self._handle_analysis_strategy,
-            'guide': self._handle_guide_strategy,
-            'general': self._handle_general_strategy
-        }
+        logger.info(f"✓ S模块 (提示装配器) 初始化完成，模板目录: {self.templates_dir}")
+
+    def generate_instruction(self, query_text: str) -> RetrievalInstruction:
+        """
+        根据用户查询生成K模块的检索指令。
+        通过分析用户意图，决定检索模式和参数。
+        """
+        analysis = self.analyzer.analyze(query_text)
         
-        logger.info(f"✓ 提示装配引擎初始化完成，模板目录: {self.templates_dir}")
-        logger.info("✓ S模块的'智能工具箱'已使用知识清单初始化。")
-    
-    def assemble_prompt(self, knowledge_packet: Dict[str, Any], 
-                       strategy: Optional[str] = None) -> str:
+        # 默认使用标准的语义检索
+        return RetrievalInstruction(
+            mode='SEMANTIC',
+            query_text=query_text,
+            filters={},
+            entities=analysis.get('entities', [])
+        )
+
+    def assemble_prompt(self, resonance_packet: ResonancePacket, query: str) -> str:
         """
         装配提示词
-        主要入口函数，执行完整的装配工作流
-        
-        Args:
-            knowledge_packet: K模块输出的知识包
-            strategy: 装配策略 ('comparison', 'analysis', 'guide', 'decision', 'general')
-            
-        Returns:
-            装配好的结构化提示词
+        主要入口函数，根据分析的意图选择合适的模板来渲染K模块的共振包。
         """
-        logger.info(f"🔧 开始装配提示词，策略: {strategy or 'auto'}")
+        logger.info("🔧 S模块开始装配最终答案...")
         
-        # 1. 策略选择
-        if not strategy:
-            strategy = self._select_strategy(knowledge_packet)
+        # 预分析，未来可用于模板选择
+        analysis = self.analyzer.analyze(query)
+        intent = analysis.get("intent", "general")
+        logger.info(f"识别到用户意图: '{intent}' (置信度: {analysis.get('intent_score', 0):.2f})")
+
+        prompt_data = {
+            "query": query,
+            "packet": resonance_packet,
+            "analysis": analysis
+        }
         
-        # 2. 语义标注
-        tagged_data = self._semantic_tagging(knowledge_packet)
+        # 当前固定使用 resonance 模板，未来可以根据 intent 选择不同模板
+        template_name = "resonance.jinja2"
+        logger.info(f"选择模板: '{template_name}'")
+
+        final_prompt = self._render_template(template_name, prompt_data)
         
-        # 3. 构建提示数据对象
-        prompt_data = self._build_prompt_data_object(knowledge_packet, tagged_data)
-        
-        # 4. 模板渲染
-        final_prompt = self._render_template(strategy, prompt_data)
-        
-        logger.info(f"✓ 提示词装配完成，长度: {len(final_prompt)} 字符")
+        logger.info(f"✓ 最终答案装配完成，长度: {len(final_prompt)} 字符")
         
         return final_prompt
-    
-    def _select_strategy(self, knowledge_packet: Dict[str, Any]) -> str:
-        """
-        自动选择装配策略
-        基于查询内容和知识特征选择最合适的策略
-        """
-        query = knowledge_packet.get('query', '').lower()
-        
-        # 关键词匹配策略选择
-        if any(keyword in query for keyword in ['对比', '比较', 'vs', '选择', '差异']):
-            return 'comparison'
-        elif any(keyword in query for keyword in ['分析', '评估', '研究', '解读']):
-            return 'analysis'
-        elif any(keyword in query for keyword in ['如何', '怎样', '步骤', '指南', '教程']):
-            return 'guide'
-        elif any(keyword in query for keyword in ['决策', '选择', '建议', '推荐']):
-            return 'decision'
-        else:
-            return 'general'
-    
-    def _semantic_tagging(self, knowledge_packet: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        语义标注
-        给知识点打标签，这是S模块的核心智能所在
-        """
-        direct_knowledge = knowledge_packet.get('direct_knowledge', [])
-        
-        # 应用各种标注器
-        tagged_data = {
-            'pros_cons': tag_pros_cons(direct_knowledge),
-            'strategic_points': extract_strategic_points(direct_knowledge),
-            'comparison_aspects': tag_comparison_aspects(direct_knowledge),
-            'temporal_aspects': tag_temporal_aspects(direct_knowledge),
-            'action_items': extract_action_items(direct_knowledge),
-            'risk_factors': tag_risk_factors(direct_knowledge)
-        }
-        
-        return tagged_data
-    
-    def _build_prompt_data_object(self, knowledge_packet: Dict[str, Any], 
-                                 tagged_data: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        构建提示数据对象
-        将所有信息整合成一个用于模板渲染的数据对象
-        """
-        prompt_data = {
-            'query': knowledge_packet.get('query', ''),
-            'topic': self._extract_topic(knowledge_packet.get('query', '')),
-            'direct_knowledge': knowledge_packet.get('direct_knowledge', []),
-            'hidden_associations': knowledge_packet.get('hidden_associations', []),
-            'attention_weights': knowledge_packet.get('attention_weights', {}),
-            'processing_metadata': knowledge_packet.get('processing_metadata', {}),
-            'tagged_data': tagged_data,
-            'knowledge_packet': knowledge_packet
-        }
-        
-        return prompt_data
-    
-    def _extract_topic(self, query: str) -> str:
-        """
-        从查询中提取主题
-        简化实现：直接使用查询作为主题
-        """
-        # 简单的主题提取逻辑
-        if '如何' in query:
-            return query.replace('如何', '').strip()
-        elif '什么是' in query:
-            return query.replace('什么是', '').strip()
-        elif '?' in query:
-            return query.replace('?', '').strip()
-        else:
-            return query.strip()
-    
-    def _render_template(self, strategy: str, prompt_data: Dict[str, Any]) -> str:
+
+    def _render_template(self, template_name: str, prompt_data: Dict[str, Any]) -> str:
         """
         模板渲染
         使用Jinja2模板引擎渲染最终提示词
         """
-        template_name = f"{strategy}.jinja2"
-        
         try:
             template = self.env.get_template(template_name)
             rendered = template.render(**prompt_data)
             return rendered.strip()
         except Exception as e:
-            logger.error(f"✗ 模板渲染失败: {e}")
-            # 回退到通用模板
-            try:
-                template = self.env.get_template("general.jinja2")
-                return template.render(**prompt_data).strip()
-            except Exception as e2:
-                logger.error(f"✗ 通用模板渲染也失败: {e2}")
-                return self._fallback_prompt(prompt_data)
-    
+            logger.error(f"✗ 模板 '{template_name}' 渲染失败: {e}")
+            return self._fallback_prompt(prompt_data)
+
     def _fallback_prompt(self, prompt_data: Dict[str, Any]) -> str:
         """一个健壮的备用提示，以防主模板渲染失败。"""
+        packet = prompt_data.get('packet')
+        if not packet:
+            return "发生未知错误，无法生成内容。"
+            
         try:
-            # 尝试使用一个最基础的模板
             template_string = """
             **查询:**
             {{ query }}
 
-            **相关信息:**
-            {% for item in direct_knowledge %}
-            - {{ item.content }} (ID: {{ item.id }})
-            {% endfor %}
+            **核心知识:**
+            {% if packet.primary_atoms %}
+                {% for item in packet.primary_atoms %}
+                - {{ item.content }} (ID: {{ item.id }}, Score: {{ "%.2f"|format(item.final_score) }})
+                {% endfor %}
+            {% else %}
+                未找到直接相关的信息。
+            {% endif %}
+            
+            **相关上下文:**
+            {% if packet.context_atoms %}
+                {% for item in packet.context_atoms %}
+                - {{ item.content }} (ID: {{ item.id }}, Score: {{ "%.2f"|format(item.final_score) }})
+                {% endfor %}
+            {% else %}
+                未找到相关的上下文信息。
+            {% endif %}
+
+            **相关概念:**
+            {% if packet.emerged_concepts %}
+                {% for concept in packet.emerged_concepts %}
+                - {{ concept.concept }} (Score: {{ "%.2f"|format(concept.score) }})
+                {% endfor %}
+            {% else %}
+                未发现相关的扩展概念。
+            {% endif %}
             """
             template = self.env.from_string(template_string)
-            return template.render(prompt_data)
+            return template.render(**prompt_data)
         except Exception as e:
-            logger.error(f"备用提示词渲染失败: {e}")
-            # 如果连备用模板都失败了，就只返回最基本的信息
-            items_str = "\n".join([f"- {item.content}" for item in prompt_data.get('direct_knowledge', [])])
-            return f"查询: {prompt_data.get('query')}\n\n知识点:\n{items_str}"
-    
-    def _handle_comparison_strategy(self, prompt_data: Dict[str, Any]) -> Dict[str, Any]:
-        return prompt_data
-    
-    def _handle_analysis_strategy(self, prompt_data: Dict[str, Any]) -> Dict[str, Any]:
-        return prompt_data
-    
-    def _handle_guide_strategy(self, prompt_data: Dict[str, Any]) -> Dict[str, Any]:
-        return prompt_data
-    
-    def _handle_general_strategy(self, prompt_data: Dict[str, Any]) -> Dict[str, Any]:
-        return prompt_data
-    
+            logger.error(f"✗ 备用模板渲染也失败: {e}")
+            return f"查询: {prompt_data.get('query')}\n\n抱歉，系统在生成回答时遇到严重错误。"
+
     def add_custom_template(self, name: str, template_content: str):
         """
-        添加自定义模板
+        添加自定义S模块模板
         
         Args:
-            name: 模板名称（不包含.jinja2后缀）
+            name: 模板名称
             template_content: 模板内容
         """
         template_path = self.templates_dir / f"{name}.jinja2"
         with open(template_path, 'w', encoding='utf-8') as f:
             f.write(template_content)
-        logger.info(f"模板 '{name}.jinja2' 已保存至 {self.templates_dir}")
-    
-    def list_templates(self) -> List[str]:
-        """列出可用的模板"""
-        return [f.stem for f in self.templates_dir.glob('*.jinja2')]
-
-    def generate_instruction(self, query_text: str) -> RetrievalInstruction:
-        """
-        Analyzes a query and generates a structured instruction for the K-Module,
-        validated against the knowledge manifest.
-        """
-        analysis_packet = self.analyzer.analyze(query_text)
-        logger.info(f"✅ S-Module Analysis: {json.dumps(analysis_packet, ensure_ascii=False, indent=2)}")
-
-        intent = analysis_packet.get("intent")
         
-        # New logic: Use manifest to decide if a filter-based search is possible
-        # if intent == "规划行程":
-        #     # This requires entity extraction for preferences
-        #     entities = analysis_packet.get("entities", [])
-        #     activity_preferences = [e['text'] for e in entities if e['label'] == 'ACTIVITY']
-        #     travel_style = [e['text'] for e in entities if e['label'] == 'STYLE']
+        # 重新加载环境以识别新模板
+        self.env.loader = FileSystemLoader(str(self.templates_dir))
+        logger.info(f"✅ 已添加并加载自定义模板: {name}")
 
-        #     # Check if the manifest supports filtering by these
-        #     # This is a simplified check; a real implementation would be more robust
-        #     if self.manifest.get('supports_activity_filter') and activity_preferences:
-        #         return RetrievalInstruction(
-        #             mode='FILTER_BASED',
-        #             query_text=query_text,
-        #             filters={'activity': activity_preferences[0]} # Simplified
-        #         )
-
-        # Default to semantic search if no specific strategy applies
-        return RetrievalInstruction(query_text=query_text, entities=analysis_packet.get("entities"))
-
-    def analyze_query(self, query_text: str) -> Dict[str, Any]:
-        """
-        Uses the internal toolkit to analyze the user query for intent and entities.
-        This is the first step in the "S-Led Query Dispatch" model.
-        """
-        logger.info(f"🔬 S-Module analyzing query: '{query_text}'")
-        return self.analyzer.analyze(query_text)
+    def list_templates(self) -> List[str]:
+        """列出所有可用的模板"""
+        return self.env.list_templates()

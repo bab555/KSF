@@ -5,10 +5,15 @@ KSF核心编排器
 
 import logging
 import json
+import os
 from typing import Dict, Any
 
+from sentence_transformers import SentenceTransformer
 from ..k_module.discoverer import KnowledgeDiscoverer
 from ..s_module.assembler import PromptAssembler
+from ..utils.pseudo_api_wrapper import PseudoAPIWrapper
+from ..k_module.data_structures import RetrievalInstruction
+from ..connectors.faiss_connector import FAISSConnector
 
 # --- 日志设置 ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -17,26 +22,72 @@ logger = logging.getLogger(__name__)
 
 class KSFOrchestrator:
     """
-    KSF核心编排器
-    协调K模块(知识发现器)和S模块(提示装配引擎)的工作
+    KSF框架的总编排器。
+    负责初始化和协调K模块和S模块。
     """
-    
     def __init__(self, config: Dict[str, Any]):
-        logger.info("🔧 正在初始化KSF V3编排器...")
+        """
+        初始化编排器。
+
+        Args:
+            config (Dict[str, Any]): 包含所有必要路径和参数的配置字典。
+        """
+        logger.info("初始化KSF编排器...")
+        self.config = config
         
-        # --- K-Module 初始化 ---
-        k_config = config['discoverer']
-        logger.info(f"📚 正在初始化K模块，知识文件: {k_config['knowledge_file']}")
+        self.k_module_config = self.config.get('discoverer', {})
+        self.s_module_config = self.config.get('assembler', {})
+        # self.api_config = self.config.get('pseudo_api', {}) # Temporarily disable
+
+        self._model = self._init_model()
+        self._connector = self._init_connector()
+        self.k_module = self._init_k_module()
+        self.s_module = self._init_s_module()
+        # self.api_wrapper = self._init_api_wrapper() # Temporarily disable
         
-        self.discoverer = KnowledgeDiscoverer(**k_config)
-        self.discoverer.load_or_build_index(force_rebuild=config.get('force_rebuild_index', False))
+        logger.info("✓ KSF编排器初始化完成。")
+
+    def _init_model(self) -> SentenceTransformer:
+        """初始化句子转换器模型。"""
+        model_name = self.k_module_config.get('model_name')
+        adapter_path = self.k_module_config.get('adapter_path')
+        logger.info(f"正在加载句子转换器模型: {model_name}")
+        model = SentenceTransformer(model_name)
+        if adapter_path and os.path.exists(adapter_path):
+            try:
+                model.load_adapter(adapter_path)
+                logger.info(f"✓ 成功从 {adapter_path} 加载PEFT适配器。")
+            except Exception as e:
+                logger.error(f"加载PEFT适配器失败: {e}")
+        return model
         
-        # --- S-Module 初始化 ---
-        s_config = config['assembler']
-        logger.info("🔧 正在初始化S模块 (提示装配器)...")
+    def _init_connector(self) -> FAISSConnector:
+        """初始化向量数据库连接器。"""
+        index_dir = self.k_module_config.get('index_dir')
+        logger.info(f"正在初始化FAISS连接器，指向目录: {index_dir}")
+        return FAISSConnector(index_dir=index_dir)
+
+    def _init_k_module(self) -> KnowledgeDiscoverer:
+        """初始化知识发现器 (K-Module)。"""
+        logger.info("正在初始化K模块...")
+        graph_path = self.k_module_config.get('weights_file')
+        
+        # 将共振参数直接从k_module_config传递
+        resonance_config = self.k_module_config
+        
+        return KnowledgeDiscoverer(
+            model=self._model,
+            connector=self._connector,
+            graph_path=graph_path,
+            config=resonance_config
+        )
+
+    def _init_s_module(self) -> PromptAssembler:
+        """初始化提示装配器 (S-Module)。"""
+        logger.info("正在初始化S模块 (提示装配器)...")
         
         # 加载知识清单 (Manifest)
-        manifest_path = s_config['manifest_path']
+        manifest_path = self.s_module_config['manifest_path']
         try:
             with open(manifest_path, 'r', encoding='utf-8') as f:
                 manifest = json.load(f)
@@ -48,114 +99,76 @@ class KSFOrchestrator:
             logger.error(f"致命错误: 无法解析 {manifest_path} 的知识清单。")
             raise
 
-        self.assembler = PromptAssembler(
-            templates_dir=s_config['templates_dir'],
+        return PromptAssembler(
+            templates_dir=self.s_module_config['templates_dir'],
             manifest=manifest
         )
 
-        logger.info("✅ KSF V3 编排器初始化成功。")
-    
-    def query(self, query_text: str, top_k: int = 5) -> Dict[str, Any]:
+    def query(self, query_text: str, **kwargs) -> Dict[str, Any]:
         """
-        使用"动态K-S协作"模型处理用户查询。
-        K模块提供初步的"直觉"检索，S模块则分析查询以在需要时提供"校正"指令。
+        执行一个完整的查询->检索->合成流程。
         """
-        logger.info(f"🚀 开始处理查询: {query_text}")
+        logger.info(f"收到查询: '{query_text}'")
+        
+        # 从kwargs或配置中获取top_k
+        top_k = kwargs.get('top_k', self.k_module_config.get('top_k', 20))
 
-        # --- 阶段1: S模块分析查询并生成检索指令 ---
-        s_instruction = self.assembler.generate_instruction(query_text)
-        logger.info(f"✅ S模块生成指令: {s_instruction}")
+        # --- 阶段1: S模块分析查询 (当前为直通模式) ---
+        instruction = self.s_module.generate_instruction(query_text)
 
-        # --- 阶段2: 基于S模块的分析进行决策 ---
-
-        # 路径1: S模块直接拒绝查询
-        if s_instruction.mode == 'REJECT':
-            rejection_reason = s_instruction.filters.get('reason', "无法回答此问题。")
-            logger.warning(f"🛑 S模块拒绝了该指令: {rejection_reason}")
-            return {"answer": rejection_reason, "knowledge_packet": {}}
-
-        # 路径2: S模块未拒绝，由K模块执行检索 (无论是指导性还是常规性)
-        # 注意：无论S模块是提供校正指令(如'ENTITY_FOCUS')还是默认的'SEMANTIC'，
-        # K模块的 `retrieve_direct_knowledge` 都使用该指令来指导其操作。
-        # 这统一了"S校正"和"K直觉"两种路径。
-        log_msg = (
-            f"S模块发出了一个校正指令 ({s_instruction.mode})。"
-            if s_instruction.mode != 'SEMANTIC' 
-            else "S模块通过了查询，使用K模块的直觉检索。"
+        # --- 阶段2: K模块执行共振检索 ---
+        logger.info(f"K模块正在检索知识包，指令: {instruction.mode}")
+        resonance_packet = self.k_module.discover(
+            instruction=instruction,
+            top_k=top_k
         )
-        logger.info(log_msg)
-        
-        retrieved_items = self.discoverer.retrieve_direct_knowledge(s_instruction, top_k=top_k * 2) # 取2*top_k作为候选
-        logger.info(f"🧠 K模块执行检索，找到 {len(retrieved_items)} 个候选项。")
+        logger.info(f"🧠 K模块返回共振包: "
+                    f"{len(resonance_packet.primary_atoms)} 个主知识, "
+                    f"{len(resonance_packet.context_atoms)} 个上下文, "
+                    f"{len(resonance_packet.emerged_concepts)} 个概念。")
 
-        if not retrieved_items:
+        if not any([resonance_packet.primary_atoms, resonance_packet.context_atoms, resonance_packet.emerged_concepts]):
             logger.warning("K模块未返回任何结果。")
-            return {"answer": "抱歉，我在知识库中找不到相关信息。", "knowledge_packet": {}}
-            
-        # --- 阶段3: S模块对候选集进行相关性评估 ---
-        logger.info("🔬 S模块正在评估候选项的相关性...")
-        
-        # 使用一个临时元组列表来存储候选项及其相关性得分
-        scored_items = []
-        for item in retrieved_items:
-            relevance_score = self.assembler.analyzer.assess_relevance(query_text, item.content)
-            if relevance_score > 0.3: # 相关性阈值
-                scored_items.append((item, relevance_score))
-                logger.info(f"  - 候选项 '{item.id}' 相关 (得分: {relevance_score:.2f})")
-            else:
-                logger.info(f"  - 候选项 '{item.id}' 不相关 (得分: {relevance_score:.2f})")
+            # 使用S模块的回退机制生成答案
+            final_answer = self.s_module.assemble_prompt(resonance_packet, query_text)
+            return {"answer": final_answer, "knowledge_packet": resonance_packet.to_dict()}
 
-        # 按相关性得分降序排序
-        scored_items.sort(key=lambda x: x[1], reverse=True)
-        
-        # 提取排序后的 RerankedItem 对象
-        final_knowledge = [item for item, score in scored_items[:top_k]]
-        
-        logger.info(f"✅ 最终过滤后的知识包包含 {len(final_knowledge)} 个条目。")
-
-        # --- 阶段4: S模块装配最终的答案 ---
-        knowledge_packet = {
-            "query": query_text,
-            "direct_knowledge": final_knowledge,
-            "associated_knowledge": [] # 暂时保留
-        }
-        
-        final_answer = self.assembler.assemble_prompt(knowledge_packet)
+        # --- 阶段3: S模块基于ResonancePacket装配最终答案 ---
+        final_answer = self.s_module.assemble_prompt(resonance_packet, query_text)
         logger.info("✅ 最终答案已装配完成。")
         
-        return {"answer": final_answer, "knowledge_packet": knowledge_packet}
+        packet_dict = resonance_packet.to_dict()
+
+        return {"answer": final_answer, "knowledge_packet": packet_dict}
     
     def get_system_status(self) -> Dict[str, Any]:
         """返回系统的当前状态字典。"""
         status = {
             "k_module_status": {
-                "model_name": self.discoverer.model_name,
-                "knowledge_base_size": len(self.discoverer.knowledge_base),
-                "index_built": self.discoverer.index is not None,
-                "relevance_threshold": self.discoverer.relevance_threshold
+                "model_name": self.k_module.model_name,
+                "index_built": self.k_module.index is not None,
+                "index_size": self.k_module.index.ntotal if self.k_module.index else 0,
+                "relevance_threshold": self.k_module.relevance_threshold,
+                "resonance_params": {
+                    "alpha": self.k_module.alpha,
+                    "beta": self.k_module.beta,
+                    "gamma": self.k_module.gamma,
+                    "final_score_threshold": self.k_module.final_score_threshold,
+                    "sc_weights": self.k_module.sc_weights
+                }
             },
             "s_module_status": {
-                "templates": self.assembler.list_templates()
+                "templates": self.s_module.list_templates()
             },
-            "system_ready": self.discoverer.index is not None
+            "system_ready": self.k_module.index is not None
         }
         return status
     
     def rebuild_knowledge_index(self, force_rebuild: bool = True):
-        """
-        重建知识索引。当知识库更新时非常有用。
-        """
-        logger.info("🔄 正在重建知识索引...")
-        
-        # 知识库在初始化时已加载，我们只需重新编码和构建。
-        # 此处假设 self.discoverer.knowledge_file_path 的文件已被更新。
-        logger.info("正在从磁盘重新加载知识库...")
-        self.discoverer.load_knowledge_base()
-        
-        logger.info("正在构建并保存新索引...")
-        self.discoverer.load_or_build_index(force_rebuild=force_rebuild)
-        
-        logger.info("✅ 知识索引重建成功。")
+        # ... (此方法现在应提示用户运行外部脚本) ...
+        logger.warning("警告: 'rebuild_knowledge_index' 已被弃用。")
+        logger.warning("请在命令行运行 'scripts/build_extended_index.py' 脚本来重建索引。")
+        pass
     
     def add_custom_template(self, name: str, template_content: str):
         """
@@ -165,7 +178,7 @@ class KSFOrchestrator:
             name: 模板名称
             template_content: 模板内容
         """
-        self.assembler.add_custom_template(name, template_content)
+        self.s_module.add_custom_template(name, template_content)
         logger.info(f"✅ 已添加自定义模板: {name}")
     
     def test_system(self, test_query: str = "测试查询") -> Dict[str, Any]:

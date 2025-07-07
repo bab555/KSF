@@ -22,7 +22,13 @@ __description__ = "Knowledge-Synthesized Framework v3 - 模块化知识合成框
 
 # 核心组件导入
 from .core import KSFOrchestrator
-from .k_module import KnowledgeDiscoverer, KnowledgePacket, KnowledgeItem, HiddenAssociation
+from .k_module import (
+    KnowledgeDiscoverer, 
+    RerankedItem,
+    ResonancePacket, 
+    EmergedConcept,
+    RetrievalInstruction
+)
 from .s_module import PromptAssembler
 
 # 主要接口
@@ -32,9 +38,10 @@ __all__ = [
     
     # K模块组件
     'KnowledgeDiscoverer',
-    'KnowledgePacket',
-    'KnowledgeItem', 
-    'HiddenAssociation',
+    'RerankedItem',
+    'ResonancePacket',
+    'EmergedConcept',
+    'RetrievalInstruction',
     
     # S模块组件
     'PromptAssembler',
@@ -43,34 +50,4 @@ __all__ = [
     '__version__',
     '__author__',
     '__description__'
-]
-
-# 便捷函数
-def create_ksf_system(knowledge_base_path: str, **kwargs):
-    """
-    快速创建KSF系统的便捷函数
-    
-    Args:
-        knowledge_base_path: 知识库文件路径
-        **kwargs: 传递给KSFOrchestrator的其他参数
-        
-    Returns:
-        KSFOrchestrator实例
-    """
-    return KSFOrchestrator(knowledge_base_path=knowledge_base_path, **kwargs)
-
-
-def quick_query(knowledge_base_path: str, query: str, **kwargs):
-    """
-    快速查询的便捷函数
-    
-    Args:
-        knowledge_base_path: 知识库文件路径
-        query: 用户查询
-        **kwargs: 传递给process_query的其他参数
-        
-    Returns:
-        查询结果
-    """
-    orchestrator = create_ksf_system(knowledge_base_path)
-    return orchestrator.process_query(query, **kwargs) 
+] 

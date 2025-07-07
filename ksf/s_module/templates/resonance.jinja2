@@ -1,0 +1,96 @@
+{# 这是一个更为智能和结构化的Jinja2模板，用于渲染由KSF框架生成的ResonancePacket。
+   它利用在PromptAssembler中注册的`processors`全局模块来自动提取和组织信息。 #}
+
+{%- set all_knowledge = packet.primary_atoms + packet.context_atoms -%}
+
+{# --- 1. 执行摘要 (Executive Summary) --- #}
+{# 在答案的开头，首先利用processors模块对所有知识进行分析，并呈现最重要的信息。 #}
+
+{%- set risks = processors.tag_risk_factors(all_knowledge) -%}
+{%- set actions = processors.extract_action_items(all_knowledge) -%}
+{%- set pros_cons = processors.tag_pros_cons(all_knowledge) -%}
+
+### 综合洞察摘要 (Executive Insights)
+
+{% if risks %}
+**⚠️ 关键风险与注意事项 (Key Risks & Considerations)**
+{% for item in risks %}
+- {{ item }}
+{% endfor %}
+{% endif %}
+
+{% if actions %}
+**🎯 核心行动建议 (Key Action Items)**
+{% for item in actions %}
+- {{ item }}
+{% endfor %}
+{% endif %}
+
+{% if pros_cons.pros or pros_cons.cons %}
+**⚖️ 优劣势分析 (Pros & Cons)**
+{% if pros_cons.pros %}
+**优势 (Pros):**
+{% for item in pros_cons.pros %}
+- {{ item }}
+{% endfor %}
+{% endif %}
+{% if pros_cons.cons %}
+**劣势 (Cons):**
+{% for item in pros_cons.cons %}
+- {{ item }}
+{% endfor %}
+{% endif %}
+{% endif %}
+
+---
+
+### 原始查询 (Original Query)
+> {{ query }}
+
+---
+
+### 详细知识支撑 (Detailed Knowledge Support)
+
+{% if not all_knowledge and not packet.emerged_concepts %}
+*抱歉，根据您的查询，未能在知识库中找到相关信息。*
+{% endif %}
+
+{% if packet.primary_atoms %}
+**⚛️ 核心知识洞察 (Primary Knowledge)**
+*这是根据您的查询，从您的核心知识库中找到的最直接、最相关的信息。*
+
+{% for item in packet.primary_atoms %}
+- **{{ item.content | first_line | trim }}**
+  `ID: {{ item.id }} | Score: {{ "%.3f"|format(item.final_score) }} (Sim: {{ "%.2f"|format(item.original_similarity) }}, Pagerank: {{ "%.2f"|format(item.pagerank_weight) }})`
+  {%- set other_lines = item.content | other_lines | trim -%}
+  {% if other_lines %}
+  > {{ other_lines | replace('\n', '\n> ') }}
+  {% endif %}
+{% endfor %}
+{% endif %}
+
+{% if packet.context_atoms %}
+**🧭 相关背景指引 (Contextual Knowledge)**
+*这是根据您的查询，从上下文知识库中找到的相关背景、原则或注解信息。*
+
+{% for item in packet.context_atoms %}
+- **{{ item.content | first_line | trim }}**
+  `ID: {{ item.id }} | Score: {{ "%.3f"|format(item.final_score) }} (Sim: {{ "%.2f"|format(item.original_similarity) }}, Pagerank: {{ "%.2f"|format(item.pagerank_weight) }})`
+  {%- set other_lines = item.content | other_lines | trim -%}
+  {% if other_lines %}
+  > {{ other_lines | replace('\n', '\n> ') }}
+  {% endif %}
+{% endfor %}
+{% endif %}
+
+{% if packet.emerged_concepts %}
+**💡 概念火花 (Emerged Concepts)**
+*除了直接信息外，系统还在语义空间中发现了以下与您查询高度相关的概念，它们或许能为您提供新的思考角度。*
+
+{% for concept in packet.emerged_concepts %}
+- **{{ concept.concept }}** `(Score: {{ "%.3f"|format(concept.score) }})`
+{% endfor %}
+{% endif %}
+
+---
+*Powered by KSF v5 - Unified Resonance Model* 

@@ -45,50 +45,43 @@ class RerankedItem:
 
 
 @dataclass
-class HiddenAssociation:
-    """Represents a discovered link between a direct knowledge item and another item."""
-    related_concept: str
-    association_type: str  # 'semantic', 'causal', 'comparative', etc.
-    strength: float
-    explanation: str
-    metadata: Dict[str, Any] = None
+class EmergedConcept:
+    """
+    Represents a concept that "emerged" from the semantic space during resonance.
+    It's not from the original knowledge base but is highly relevant.
+    """
+    concept: str
+    score: float
+
+    def to_dict(self):
+        return {"concept": self.concept, "score": self.score}
 
 
 @dataclass
-class KnowledgePacket:
-    """K模块输出的结构化知识包"""
-    query: str
-    direct_knowledge: List[KnowledgeItem]
-    hidden_associations: List[HiddenAssociation]
-    attention_weights: Dict[str, float]
-    processing_metadata: Dict[str, Any] = None
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """转换为字典格式，便于S模块处理"""
+class ResonancePacket:
+    """
+    The final output packet from the K-Module in the Unified Resonance Framework.
+    It can contain up to three types of information, based on the sources used
+    to build the index.
+    """
+    primary_atoms: List[RerankedItem] = field(default_factory=list)
+    context_atoms: List[RerankedItem] = field(default_factory=list)
+    emerged_concepts: List[EmergedConcept] = field(default_factory=list)
+
+    def to_dict(self):
         return {
-            'query': self.query,
-            'direct_knowledge': [
-                {
-                    'content': item.content,
-                    'source': item.source,
-                    'relevance_score': item.relevance_score,
-                    'metadata': item.metadata or {}
-                }
-                for item in self.direct_knowledge
-            ],
-            'hidden_associations': [
-                {
-                    'related_concept': assoc.related_concept,
-                    'association_type': assoc.association_type,
-                    'strength': assoc.strength,
-                    'explanation': assoc.explanation,
-                    'metadata': assoc.metadata or {}
-                }
-                for assoc in self.hidden_associations
-            ],
-            'attention_weights': self.attention_weights,
-            'processing_metadata': self.processing_metadata or {}
+            "primary_atoms": [atom.to_dict() for atom in self.primary_atoms],
+            "context_atoms": [atom.to_dict() for atom in self.context_atoms],
+            "emerged_concepts": [concept.to_dict() for concept in self.emerged_concepts]
         }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'ResonancePacket':
+        """Creates a ResonancePacket instance from a dictionary."""
+        primary = [RerankedItem(**atom) for atom in data.get('primary_atoms', [])]
+        context = [RerankedItem(**atom) for atom in data.get('context_atoms', [])]
+        concepts = [EmergedConcept(**concept) for concept in data.get('emerged_concepts', [])]
+        return cls(primary_atoms=primary, context_atoms=context, emerged_concepts=concepts)
 
 
 @dataclass

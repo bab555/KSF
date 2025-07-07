@@ -5,6 +5,7 @@ from torch.utils.data import Dataset, DataLoader
 from transformers import PreTrainedTokenizer, PreTrainedTokenizerBase, default_data_collator
 from typing import List, Dict, Any, Union
 import logging
+import networkx as nx
 
 # Get a logger
 logger = logging.getLogger(__name__)
@@ -45,11 +46,70 @@ def load_knowledge_base_from_file(file_path: str) -> List[Dict[str, Any]]:
             for i, line in enumerate(f):
                 if line.strip():
                     knowledge_items.append({"id": i, "content": line.strip()})
+    
+    elif file_extension == ".jsonl":
+        with open(file_path, 'r', encoding='utf-8') as f:
+            for i, line in enumerate(f):
+                if line.strip():
+                    item = json.loads(line)
+                    # 确保'id'和'content'键存在
+                    if 'id' in item and 'content' in item:
+                        knowledge_items.append(item)
+                    else:
+                        logger.warning(f"跳过第 {i+1} 行，因为它缺少'id'或'content'键。")
+
     else:
-        raise ValueError(f"Unsupported file format: {file_extension}. Please use .json or .txt.")
+        raise ValueError(f"Unsupported file format: {file_extension}. Please use .json, .txt, or .jsonl.")
         
     print(f"✓ Successfully loaded knowledge base with {len(knowledge_items)} items.")
     return knowledge_items
+
+def load_knowledge_weights(weights_file: str) -> Dict[str, float]:
+    """
+    从JSON文件加载预先计算好的知识权重（如PageRank）。
+    """
+    logger.info(f"正在从 {weights_file} 加载知识权重...")
+    try:
+        with open(weights_file, "r", encoding="utf-8") as f:
+            weights_data = json.load(f)
+        # 确保键是字符串，值是浮点数
+        processed_weights = {str(k): float(v.get('weight', 0.0)) for k, v in weights_data.items()}
+        logger.info(f"✓ 成功加载并处理了 {len(processed_weights)} 个知识权重。")
+        return processed_weights
+    except FileNotFoundError:
+        logger.warning(f"⚠️ 在 {weights_file} 未找到知识权重文件。Ss权重将始终为0。")
+        return {}
+    except Exception as e:
+        logger.error(f"加载或处理权重文件 {weights_file} 时出错: {e}")
+        return {}
+
+def calculate_pagerank(graph_data: List[Dict[str, Any]]) -> Dict[str, float]:
+    """
+    根据图数据计算PageRank。
+
+    Args:
+        graph_data (List[Dict[str, Any]]): 包含'nodes'和'links'的图数据。
+
+    Returns:
+        Dict[str, float]: 包含每个节点ID及其PageRank中心性的字典。
+    """
+    G = nx.DiGraph()
+    if not graph_data or 'nodes' not in graph_data or 'links' not in graph_data:
+        logger.warning("图数据格式不正确或为空，无法计算PageRank。")
+        return {}
+        
+    for node in graph_data.get('nodes', []):
+        G.add_node(node['id'])
+    
+    for link in graph_data.get('links', []):
+        G.add_edge(link['source'], link['target'])
+
+    if not G.nodes:
+        logger.warning("图中没有节点，无法计算PageRank。")
+        return {}
+        
+    pagerank = nx.pagerank(G)
+    return pagerank
 
 def save_data_to_json(data: Union[List, Dict], file_path: str):
     """

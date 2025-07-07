@@ -4,6 +4,12 @@ K模块 (知识发现器)
 """
 
 from .discoverer import KnowledgeDiscoverer
-from .data_structures import KnowledgePacket, KnowledgeItem, HiddenAssociation
+from .data_structures import RerankedItem, ResonancePacket, EmergedConcept, RetrievalInstruction
 
-__all__ = ['KnowledgeDiscoverer', 'KnowledgePacket', 'KnowledgeItem', 'HiddenAssociation'] 
+__all__ = [
+    'KnowledgeDiscoverer', 
+    'RerankedItem',
+    'ResonancePacket', 
+    'EmergedConcept',
+    'RetrievalInstruction'
+] 
